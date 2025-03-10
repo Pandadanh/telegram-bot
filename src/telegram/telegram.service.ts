@@ -44,7 +44,7 @@ export class TelegramService {
         this.bot.start();
     }
 
-    @Cron(CronExpression.EVERY_MINUTE)
+    @Cron(CronExpression.EVERY_10_SECONDS)
     async autoSendMessage() {
         if (!this.check) {
             console.log("Chưa có phản hồi, không cần gọi API");
