@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Interval } from '@nestjs/schedule';
 import { Bot } from 'grammy';
 import { EmailService } from '../email/email.service';
 
@@ -44,7 +44,7 @@ export class TelegramService {
         this.bot.start();
     }
 
-    @Cron(CronExpression.EVERY_10_SECONDS)
+    @Interval(60000)
     async autoSendMessage() {
         if (!this.check) {
             console.log("Chưa có phản hồi, không cần gọi API");
