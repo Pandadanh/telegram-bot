@@ -44,7 +44,7 @@ export class TelegramService {
         this.bot.start();
     }
 
-    @Interval(60000)
+    @Interval(5000)
     async autoSendMessage() {
         if (!this.check) {
             console.log("Chưa có phản hồi, không cần gọi API");
