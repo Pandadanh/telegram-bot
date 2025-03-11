@@ -91,11 +91,11 @@ export class EmailService {
             }
 
             const scriptPath = path.resolve(
-                '/home/pandadanh/Desktop/telegram-bot/telegram-bot/test.py'
+                '/home/pandadanh/Desktop/telegram-bot/test.py'
             );
 
             // Dùng Python từ venv
-            const pythonExecutable = '/home/pandadanh/Desktop/telegram-bot/telegram-bot/venv/bin/python';
+            const pythonExecutable = '/home/pandadanh/Desktop/telegram-bot/venv/bin/python';
 
             const pythonProcess = spawn(pythonExecutable, ['-X', 'utf8', scriptPath]);
 
