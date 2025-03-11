@@ -19,6 +19,9 @@ model Email {
   expense   String
   price     Float
   month     Int
+  isRead    Boolean  @default(false)
+  category  String   @default("Others")
+  note      String?
   createdAt DateTime @default(now())
 }
 

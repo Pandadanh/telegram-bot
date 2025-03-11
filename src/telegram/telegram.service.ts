@@ -2,20 +2,25 @@ import { Injectable } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { Bot } from 'grammy';
 import { EmailService } from '../email/email.service';
+import { Email } from 'src/email/email.entity';
 
 @Injectable()
 export class TelegramService {
+    private chatId;
+    private emails;
+    private check;
+
     constructor(private readonly bot: Bot, private emailService: EmailService) {
         this.init();
+        this.emails = new Email();
+        this.check = true;
+        this.chatId = "7408813563";
     }
 
     async sendMessage(chatId: string, message: string): Promise<void> {
         await this.bot.api.sendMessage(chatId, message);
     }
 
-    private chatId = "7408813563";
-    private emails = [];
-    private check = true;
 
     private init() {
         this.bot.on('message', async (ctx) => {
@@ -23,49 +28,96 @@ export class TelegramService {
             const replyToMessage = ctx.message.reply_to_message;
 
             if (replyToMessage) {
-                console.log('Bạn đã reply tin nhắn:', replyToMessage.text);
-                console.log('Nội dung reply:', userMessage);
+                console.log('📩 Bạn đã reply tin nhắn:', replyToMessage.text);
+                console.log('📝 Nội dung reply:', userMessage);
 
-                if (this.emails.length > 0) {
-                    const emailToSave = this.emails[0];
-                    this.emails = this.emails.filter(email => email.id !== emailToSave.id);
+                if (this.emails != null && this.emails != undefined) {
+                    const success = await this.emailService.saveEmailsReply(this.emails, userMessage);
+                    if (success) {
+                        const total = await this.emailService.getTotalUnreadExpense(new Date().getMonth() + 1);
+                        console.log('Tổng chi tháng này:', total);
+                        this.check = true;
+                        this.emails = null;
 
-                    await this.emailService.saveEmailsReply(emailToSave, userMessage);
-                    const total = await this.emailService.getTotalPrice(new Date().getMonth() + 1);
+                        const formattedTotal = total.toLocaleString("vi-VN");
+                        await ctx.reply(`✅ Đã chi tiêu trong tháng này!\nTổng: ${formattedTotal}`);
+
+                    } else {
+                        await ctx.reply("❌ Lỗi khi lưu dữ liệu. Vui lòng thử lại.");
+                    }
+                }
+            } else {
+                // await ctx.reply("⚠️ Hãy reply tin nhắn để lưu chi tiêu!");
+                if (userMessage === '/reset_bot' || userMessage === 'Reset-bot')
                     this.check = true;
 
-                    await ctx.reply(`Đã chi tiêu trong tháng này! Tổng: ${total}`);
-                } else {
-                    await ctx.reply("Không có email nào để lưu.");
+                else if (userMessage === '/check_bot' || userMessage === 'Check-bot') {
+                    console.log('Check bot');
+                    this.check = true;
+                    await this.emailService.runPythonScript();
+                    await this.autoSendMessage();
                 }
+                else if (userMessage === '/check_outlay' || userMessage === 'Check-outlay') {
+                    const total = await this.emailService.getTotalUnreadExpense(new Date().getMonth() + 1);
+                    console.log('Tổng chi tháng này:', total);
+                    const formattedTotal = total.toLocaleString("vi-VN");
+                    await ctx.reply(`✅ Đã chi tiêu trong tháng này!\nTổng: ${formattedTotal}`);
+                }
+                else if (userMessage === '/help' || userMessage === 'help') {
+                    await ctx.reply("Hiện tại hệ thống có các lệnh sau:\n1. /reset_bot: Để reset bot\n2. /check_bot: Để kiểm tra thông báo\n3. /check_outlay: Kiểm tra tiền đã tiêu trong tháng\n4. /help: Hiển thị các lệnh hỗ trợ\n5. /log_time: LogWork Jira");
+                }
+                else {
+                    await ctx.reply("❌ Lệnh không hợp lệ. Hãy thử /help để xem danh sách lệnh hỗ trợ!");
+                }
+
             }
         });
 
         this.bot.start();
     }
 
-    @Interval(5000)
+
+    @Interval(30000)
     async autoSendMessage() {
-        if (!this.check) {
-            console.log("Chưa có phản hồi, không cần gọi API");
-            return;
-        }
+        try {
 
-        if (this.emails == undefined || this.emails.length === 0) {
+            const currentHour = new Date().getHours(); // Lấy giờ hiện tại
+
+            if (currentHour >= 23 || currentHour < 6) {
+                console.log("Ngoài giờ hoạt động (23h - 6h), không chạy.");
+                return;
+            }
+
+            if (!this.check) {
+                console.log('Chưa có phản hồi, không cần gọi API');
+                const email = this.emails;
+                const money = parseFloat(email.price);
+                const status = money < 0 ? 'giảm' : 'tăng';
+                const formattedMoney = Math.abs(money).toLocaleString('vi-VN');
+                const message = `Chào Hoàng Đăng\nTài khoản của bạn đã ${status} ${formattedMoney} VNĐ\nNội dung: ${email.note}\nCho tôi biết lý do chi tiêu của bạn nha!`;
+
+                console.log('Gửi tin nhắn:', message);
+                await this.sendMessage(this.chatId, message);
+
+                return;
+            }
+
+
             this.emails = await this.emailService.getUnreadEmails();
+            this.check = false;
+            console.log('Danh sách email chưa đọc:', this.emails);
+
+            const email = this.emails; // Lấy email đầu tiên
+            const money = parseFloat(email.price);
+            const status = money < 0 ? 'giảm' : 'tăng';
+            const formattedMoney = Math.abs(money).toLocaleString('vi-VN');
+            const message = `Chào Hoàng Đăng\nTài khoản của bạn đã ${status} ${formattedMoney} VNĐ với nội dung: ${email.note}\nCho tôi biết lý do chi tiêu của bạn đi nha!`;
+
+            console.log('Gửi tin nhắn:', message);
+            await this.sendMessage(this.chatId, message);
         }
-
-        this.check = false;
-        console.log(this.emails);
-        console.log('Gửi tin nhắn tự động mỗi 1 phút!');
-
-        if (this.emails.length > 0) {
-            const emailDetail = await this.emailService.getDetailEmail(this.emails[0].id);
-            const money = await this.getMoneyByString(emailDetail.snippet);
-
-            this.emails[0] = { ...this.emails[0], money };
-
-            await this.sendMessage(this.chatId, `Tài khoản bạn vừa thay đổi: ${money} VND`);
+        catch (error) {
+            console.error('❌ Không có gì để gửi:');
         }
 
     }
