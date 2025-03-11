@@ -24,6 +24,7 @@ export class TelegramService {
 
     private init() {
         console.log("🚀 Đang khởi động bot...");
+        this.bot.start();  // Kích hoạt long polling
 
         this.bot.on('message', async (ctx) => {
             try {
