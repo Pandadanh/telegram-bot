@@ -4,6 +4,7 @@ import { EmailModule } from './email/email.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
+import { WebSocketService } from './websocket.gateway';
 
 @Module({
   imports: [
@@ -22,5 +23,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     EmailModule,
     TelegramModule,
   ],
+  providers: [WebSocketService],
+
 })
 export class AppModule { }
