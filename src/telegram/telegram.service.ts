@@ -82,8 +82,16 @@ export class TelegramService {
         });
 
         try {
-            console.log("🔥 Đang khởi động bot...");
-            this.bot.start().then(() => console.log("✅ Bot đã khởi động!"));
+            console.log("🔍 Bot object:", this.bot);
+            if (!this.bot) {
+                console.error("🚨 Bot chưa được khởi tạo!");
+            } else {
+                console.log("🔥 Đang khởi động bot...");
+                this.bot.start()
+                    .then(() => console.log("✅ Bot đã khởi động!"))
+                    .catch(err => console.error("🚨 Lỗi khi khởi động bot:", err));
+            }
+
 
         } catch (error) {
             console.error('❌ Lỗi khởi tạo:', error);
