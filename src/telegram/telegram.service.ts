@@ -22,100 +22,108 @@ export class TelegramService {
     }
 
 
-    private init() {
-        console.log("🚀 Đang khởi động bot...");
-        // this.bot.start();  // Kích hoạt long polling
-
-        this.bot.on('message', async (ctx) => {
-            try {
-                const userMessage = ctx.message.text;
-                const replyToMessage = ctx.message.reply_to_message;
-
-                if (replyToMessage) {
-                    console.log('📩 Bạn đã reply tin nhắn:', replyToMessage.text);
-                    console.log('📝 Nội dung reply:', userMessage);
-
-                    if (this.emails != null && this.emails != undefined) {
-                        const success = await this.emailService.saveEmailsReply(this.emails, userMessage);
-                        if (success) {
-                            const total = await this.emailService.getTotalUnreadExpense(new Date().getMonth() + 1);
-                            console.log('Tổng chi tháng này:', total);
-                            this.check = true;
-                            this.emails = null;
-
-                            const formattedTotal = total.toLocaleString("vi-VN");
-                            await ctx.reply(`✅ Đã chi tiêu trong tháng này!\nTổng: ${formattedTotal}`);
-
-                        } else {
-                            await ctx.reply("❌ Lỗi khi lưu dữ liệu. Vui lòng thử lại.");
-                        }
-                    }
-                } else {
-                    // await ctx.reply("⚠️ Hãy reply tin nhắn để lưu chi tiêu!");
-                    if (userMessage === '/reset_bot' || userMessage === 'Reset-bot')
-                        this.check = true;
-
-                    else if (userMessage === '/check_bot' || userMessage === 'Check-bot') {
-                        console.log('Check bot');
-                        this.check = true;
-                        await this.emailService.runPythonScript();
-                        await this.autoSendMessage();
-                    }
-                    else if (userMessage === '/check_outlay' || userMessage === 'Check-outlay') {
-                        const total = await this.emailService.getTotalUnreadExpense(new Date().getMonth() + 1);
-                        console.log('Tổng chi tháng này:', total);
-                        const formattedTotal = total.toLocaleString("vi-VN");
-                        await ctx.reply(`✅ Đã chi tiêu trong tháng này!\nTổng: ${formattedTotal}`);
-                    }
-                    else if (userMessage === '/help' || userMessage === 'help') {
-                        await ctx.reply("Hiện tại hệ thống có các lệnh sau:\n1. /reset_bot: Để reset bot\n2. /check_bot: Để kiểm tra thông báo\n3. /check_outlay: Kiểm tra tiền đã tiêu trong tháng\n4. /help: Hiển thị các lệnh hỗ trợ\n5. /log_time: LogWork Jira");
-                    }
-                    else {
-                        await ctx.reply("❌ Lệnh không hợp lệ. Hãy thử /help để xem danh sách lệnh hỗ trợ!");
-                    }
-
-                }
-            } catch (error) {
-                console.error('❌ Lỗi khi xử lý tin nhắn:', error);
-            }
-
-        });
-
-        try {
-            console.log("🔍 Bot object:", this.bot);
-            if (!this.bot) {
-                console.error("🚨 Bot chưa được khởi tạo!");
-            } else {
-                console.log("🔥 Đang khởi động bot...");
-                this.bot.start()
-                    .then(async () => {
-                        const me = await this.bot.api.getMe();
-                        console.log("✅ Bot đã khởi động!", me);
-                    })
-                    .catch(err => console.error("🚨 Lỗi khi khởi động bot:", err));
-            }
-
-        } catch (error) {
-            console.error('❌ Lỗi khởi tạo:', error);
-        }
-    }
-
     // private init() {
     //     console.log("🚀 Đang khởi động bot...");
+    //     // this.bot.start();  // Kích hoạt long polling
 
     //     this.bot.on('message', async (ctx) => {
-    //         console.log("📩 Tin nhắn nhận được:", ctx.message);
+    //         try {
+    //             const userMessage = ctx.message.text;
+    //             const replyToMessage = ctx.message.reply_to_message;
 
-    //         if (ctx.message.text) {
-    //             console.log("📝 Nội dung:", ctx.message.text);
-    //             await ctx.reply(`👋 Xin chào! Bạn vừa gửi: ${ctx.message.text}`);
-    //         } else {
-    //             console.log("⚠️ Không có nội dung tin nhắn!");
+    //             if (replyToMessage) {
+    //                 console.log('📩 Bạn đã reply tin nhắn:', replyToMessage.text);
+    //                 console.log('📝 Nội dung reply:', userMessage);
+
+    //                 if (this.emails != null && this.emails != undefined) {
+    //                     const success = await this.emailService.saveEmailsReply(this.emails, userMessage);
+    //                     if (success) {
+    //                         const total = await this.emailService.getTotalUnreadExpense(new Date().getMonth() + 1);
+    //                         console.log('Tổng chi tháng này:', total);
+    //                         this.check = true;
+    //                         this.emails = null;
+
+    //                         const formattedTotal = total.toLocaleString("vi-VN");
+    //                         await ctx.reply(`✅ Đã chi tiêu trong tháng này!\nTổng: ${formattedTotal}`);
+
+    //                     } else {
+    //                         await ctx.reply("❌ Lỗi khi lưu dữ liệu. Vui lòng thử lại.");
+    //                     }
+    //                 }
+    //             } else {
+    //                 // await ctx.reply("⚠️ Hãy reply tin nhắn để lưu chi tiêu!");
+    //                 if (userMessage === '/reset_bot' || userMessage === 'Reset-bot')
+    //                     this.check = true;
+
+    //                 else if (userMessage === '/check_bot' || userMessage === 'Check-bot') {
+    //                     console.log('Check bot');
+    //                     this.check = true;
+    //                     await this.emailService.runPythonScript();
+    //                     await this.autoSendMessage();
+    //                 }
+    //                 else if (userMessage === '/check_outlay' || userMessage === 'Check-outlay') {
+    //                     const total = await this.emailService.getTotalUnreadExpense(new Date().getMonth() + 1);
+    //                     console.log('Tổng chi tháng này:', total);
+    //                     const formattedTotal = total.toLocaleString("vi-VN");
+    //                     await ctx.reply(`✅ Đã chi tiêu trong tháng này!\nTổng: ${formattedTotal}`);
+    //                 }
+    //                 else if (userMessage === '/help' || userMessage === 'help') {
+    //                     await ctx.reply("Hiện tại hệ thống có các lệnh sau:\n1. /reset_bot: Để reset bot\n2. /check_bot: Để kiểm tra thông báo\n3. /check_outlay: Kiểm tra tiền đã tiêu trong tháng\n4. /help: Hiển thị các lệnh hỗ trợ\n5. /log_time: LogWork Jira");
+    //                 }
+    //                 else {
+    //                     await ctx.reply("❌ Lệnh không hợp lệ. Hãy thử /help để xem danh sách lệnh hỗ trợ!");
+    //                 }
+
+    //             }
+    //         } catch (error) {
+    //             console.error('❌ Lỗi khi xử lý tin nhắn:', error);
     //         }
+
     //     });
 
-    //     this.bot.start().then(() => console.log("✅ Bot đã khởi động!"));
+    //     try {
+    //         console.log("🔍 Bot object:", this.bot);
+    //         if (!this.bot) {
+    //             console.error("🚨 Bot chưa được khởi tạo!");
+    //         } else {
+    //             console.log("🔥 Đang khởi động bot...");
+    //             this.bot.start()
+    //                 .then(async () => {
+    //                     const me = await this.bot.api.getMe();
+    //                     console.log("✅ Bot đã khởi động!", me);
+    //                 })
+    //                 .catch(err => console.error("🚨 Lỗi khi khởi động bot:", err));
+    //         }
+
+    //     } catch (error) {
+    //         console.error('❌ Lỗi khởi tạo:', error);
+    //     }
     // }
+
+    private init() {
+        console.log("🚀 Đang khởi động bot...");
+
+        this.bot.on('message', async (ctx) => {
+            console.log("📩 Tin nhắn nhận được:", JSON.stringify(ctx.message, null, 2));
+
+            if (ctx.message.text) {
+                console.log("📝 Nội dung:", ctx.message.text);
+                await ctx.reply(`👋 Xin chào! Bạn vừa gửi: ${ctx.message.text}`);
+            } else {
+                console.log("⚠️ Không có nội dung tin nhắn!");
+            }
+        });
+
+        this.bot.start();
+        console.log("✅ Bot đã khởi động thành công!");
+
+        this.bot.start().then(() => {
+            console.log("🚀 Bot đang chạy...");
+        }).catch((err) => {
+            console.error("❌ Lỗi khi khởi động bot:", err);
+        });
+    }
+
 
 
 
