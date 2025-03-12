@@ -90,7 +90,6 @@ export class TelegramService {
             if (!this.bot) {
                 console.error("🚨 Bot chưa được khởi tạo!");
             } else {
-                this.bot.init();
                 console.log("🔥 Đang khởi động bot...");
                 this.bot.start()
                     .then(async () => {
