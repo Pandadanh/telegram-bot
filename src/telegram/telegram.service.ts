@@ -81,7 +81,13 @@ export class TelegramService {
 
         });
 
-        this.bot.start().then(() => console.log("✅ Bot đã khởi động!"));
+        try {
+            console.log("🔥 Đang khởi động bot...");
+            this.bot.start().then(() => console.log("✅ Bot đã khởi động!"));
+
+        } catch (error) {
+            console.error('❌ Lỗi khởi tạo:', error);
+        }
     }
 
     // private init() {
@@ -103,16 +109,16 @@ export class TelegramService {
 
 
 
-    @Interval(30000)
+    @Interval(5000)
     async autoSendMessage() {
         try {
 
-            // const currentHour = new Date().getHours(); // Lấy giờ hiện tại
+            const currentHour = new Date().getHours(); // Lấy giờ hiện tại
 
-            // if (currentHour >= 23 || currentHour < 6) {
-            //     console.log("Ngoài giờ hoạt động (23h - 6h), không chạy.");
-            //     return;
-            // }
+            if (currentHour >= 23 || currentHour < 6) {
+                console.log("Ngoài giờ hoạt động (23h - 6h), không chạy.");
+                return;
+            }
 
             if (!this.check) {
                 console.log('Chưa có phản hồi, không cần gọi API');
