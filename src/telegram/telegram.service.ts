@@ -3,6 +3,7 @@ import { Interval } from '@nestjs/schedule';
 import { Bot } from 'grammy';
 import { EmailService } from '../email/email.service';
 import { Email } from 'src/email/email.entity';
+import { log } from 'console';
 
 @Injectable()
 export class TelegramService {
@@ -18,6 +19,7 @@ export class TelegramService {
     }
 
     async sendMessage(chatId: string, message: string): Promise<void> {
+        log('📤 Gửi tin nhắn:', message);
         await this.bot.api.sendMessage(chatId, message);
     }
 
@@ -47,7 +49,6 @@ export class TelegramService {
                             await ctx.reply(`✅ Đã chi tiêu trong tháng này!\nTổng: ${formattedTotal}`);
 
                         } else {
-                            await ctx.reply("❌ Lỗi khi lưu dữ liệu. Vui lòng thử lại.");
                         }
                     }
                 } else {
@@ -81,12 +82,18 @@ export class TelegramService {
 
         });
 
-        this.bot.start().then(() => console.log("✅ Bot đã khởi động!"));
+        try {
+
+            console.log("🔥 Đang khởi động bot...");
+            this.bot.start().then(() => console.log("✅ Bot đã khởi động!"));
+
+        } catch (error) {
+            console.error('❌ Lỗi khi tạo:', error);
+        }
     }
 
     // private init() {
     //     console.log("🚀 Đang khởi động bot...");
-
     //     this.bot.on('message', async (ctx) => {
     //         console.log("📩 Tin nhắn nhận được:", ctx.message);
 
@@ -107,12 +114,12 @@ export class TelegramService {
     async autoSendMessage() {
         try {
 
-            // const currentHour = new Date().getHours(); // Lấy giờ hiện tại
+            const currentHour = new Date().getHours();
 
-            // if (currentHour >= 23 || currentHour < 6) {
-            //     console.log("Ngoài giờ hoạt động (23h - 6h), không chạy.");
-            //     return;
-            // }
+            if (currentHour >= 23 || currentHour < 6) {
+                console.log("Ngoài giờ hoạt động (23h - 6h), không chạy.");
+                return;
+            }
 
             if (!this.check) {
                 console.log('Chưa có phản hồi, không cần gọi API');
