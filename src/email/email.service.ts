@@ -83,19 +83,21 @@ export class EmailService {
     @Interval(1800000) // 30 phút
     async runPythonScript(): Promise<string> {
         return new Promise((resolve, reject) => {
-
-            const currentHour = new Date().getHours(); // Lấy giờ hiện tại
+            const currentHour = new Date().getHours();
 
             if (currentHour >= 23 || currentHour < 6) {
                 console.log("Ngoài giờ hoạt động (23h - 6h), không chạy.");
-                return;
+                return resolve("Bỏ qua do ngoài giờ hoạt động.");
             }
 
             const scriptPath = path.resolve(
-                'C:/Users/Admin/Desktop/word/persional/OneForAll/chi-project/PersonalFinancialManagement/telegram-bot/test.py',
+                '/home/pandadanh/Desktop/telegram-bot/test.py'
             );
 
-            const pythonProcess = spawn('python', ['-X', 'utf8', scriptPath]);
+            // Dùng Python từ venv
+            const pythonExecutable = '/home/pandadanh/Desktop/telegram-bot/venv/bin/python';
+
+            const pythonProcess = spawn(pythonExecutable, ['-X', 'utf8', scriptPath]);
 
             let output = '';
             pythonProcess.stdout.on('data', (data) => {
