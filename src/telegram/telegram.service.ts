@@ -88,10 +88,12 @@ export class TelegramService {
             } else {
                 console.log("🔥 Đang khởi động bot...");
                 this.bot.start()
-                    .then(() => console.log("✅ Bot đã khởi động!"))
+                    .then(async () => {
+                        const me = await this.bot.api.getMe();
+                        console.log("✅ Bot đã khởi động!", me);
+                    })
                     .catch(err => console.error("🚨 Lỗi khi khởi động bot:", err));
             }
-
 
         } catch (error) {
             console.error('❌ Lỗi khởi tạo:', error);
