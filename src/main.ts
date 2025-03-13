@@ -6,7 +6,7 @@ import { WsAdapter } from '@nestjs/platform-ws';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
-  const port = 3001;
+  const port = configService.get<number>('PORT') || 3000;
 
   // Cho phép WebSocket hoạt động
   app.useWebSocketAdapter(new WsAdapter(app));

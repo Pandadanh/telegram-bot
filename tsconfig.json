@@ -16,6 +16,15 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
-    "noFallthroughCasesInSwitch": false
-  }
+    "noFallthroughCasesInSwitch": false,
+    "resolveJsonModule": true, // Added to support importing JSON files
+    "esModuleInterop": true // Added to ensure compatibility with CommonJS and ES modules
+  },
+  "include": [
+    "src/**/*"
+  ], // Ensure all source files are included
+  "exclude": [
+    "node_modules",
+    "dist"
+  ] // Exclude unnecessary directories
 }
