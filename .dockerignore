@@ -1,0 +1,13 @@
+node_modules
+dist
+*.log
+*.ts
+*.js.map
+Dockerfile
+README.md
+package-lock.json
+.env
+.git
+.vscode
+.idea
+*.md
