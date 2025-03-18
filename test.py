@@ -152,7 +152,7 @@ class EmailBot:
             
             query = """
             SELECT SUM("price") FROM "Email" 
-            WHERE "month" = %s AND "isRead" = true;
+            WHERE "month" = %s AND "isRead" = true AND "price" < 0;
             """
             
             cursor.execute(query, (datetime.now().month,))
@@ -192,7 +192,7 @@ class EmailBot:
             conn = psycopg2.connect(**DB_CONFIG)
             cursor = conn.cursor()
             
-            # Get expenses grouped by category (only negative amounts)
+            # Get expenses grouped by category
             query = """
             SELECT 
                 "category",
@@ -204,7 +204,6 @@ class EmailBot:
             WHERE "month" = %s
             AND "isRead" = true
             AND "category" IS NOT NULL
-            AND "price" < 0
             GROUP BY "category"
             ORDER BY total_amount ASC;
             """
@@ -220,9 +219,10 @@ class EmailBot:
                 
                 for category, count, amount, expenses, notes in results:
                     formatted_amount = "{:,.0f}".format(abs(amount))
+                    status = 'chi' if amount < 0 else 'thu'
                     
                     message += f"📌 {category}:\n"
-                    message += f"💰 Tổng: {formatted_amount} VNĐ\n"
+                    message += f"💰 Tổng: {formatted_amount} VNĐ ({status})\n"
                     message += f"📝 Chi tiết:\n"
                     
                     # Add each expense with bullet point
@@ -237,11 +237,12 @@ class EmailBot:
                 
                 # Add total summary
                 formatted_total = "{:,.0f}".format(abs(total_spent))
-                message += f"📈 Tổng chi tiêu: {formatted_total} VNĐ"
+                status = 'chi' if total_spent < 0 else 'thu'
+                message += f"📈 Tổng cộng: {formatted_total} VNĐ ({status})"
                 
                 await update.message.reply_text(message)
             else:
-                await update.message.reply_text(f"📊 Chưa có chi tiêu nào trong tháng {month}!")
+                await update.message.reply_text(f"📊 Chưa có dữ liệu chi tiêu trong tháng {month}!")
                 
         except Exception as e:
             logging.error(f"Error generating report: {e}")
