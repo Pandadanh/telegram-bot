@@ -58,6 +58,7 @@ class EmailBot:
         4. /report: Xem thống kê chi tiêu theo danh mục
         5. /help: Hiển thị các lệnh hỗ trợ
         6. /name_love: Hiển thị tên người yêu
+        7. /check_outlay_web: Xem báo cáo chi tiêu trực quan
         """
         await update.message.reply_text(help_text)
 
@@ -252,6 +253,13 @@ class EmailBot:
         """Handle /name_love command"""
         await update.message.reply_text("❤️ Hoàng Đăng vs Thy Uyên ❤️")
 
+    async def check_outlay_web(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /check_outlay_web command"""
+        await update.message.reply_text(
+            "🌐 Xem báo cáo chi tiêu trực quan tại:\n"
+            "https://pandadanh.github.io/report-Financial/"
+        )
+
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle incoming messages"""
         try:
@@ -329,6 +337,8 @@ class EmailBot:
                     await self.help_command(update, context)
                 elif message in ['/name_love', 'Name-love']:
                     await self.name_love(update, context)
+                elif message in ['/check_outlay_web', 'Check-outlay-web']:
+                    await self.check_outlay_web(update, context)
                 else:
                     await update.message.reply_text("❌ Lệnh không hợp lệ. Hãy thử /help để xem danh sách lệnh hỗ trợ!")
 
@@ -463,6 +473,7 @@ class EmailBot:
         self.application.add_handler(CommandHandler("check_outlay", self.check_outlay))
         self.application.add_handler(CommandHandler("report", self.report_command))
         self.application.add_handler(CommandHandler("name_love", self.name_love))
+        self.application.add_handler(CommandHandler("check_outlay_web", self.check_outlay_web))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
         # Create event loop
