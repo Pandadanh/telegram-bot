@@ -1,12 +1,13 @@
 import re
 import psycopg2
-import datetime
+from datetime import datetime, date, timedelta
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import os
 import pickle
+import email.utils
 
 def get_credentials():
     creds = None
@@ -62,15 +63,15 @@ def extract_transaction_info(text):
     
     return price, note
 
-def save_to_db(email_id, subject, snippet, price, note, created_date):
+def save_to_db(email_id, subject, snippet, price, note, sent_date):
     """
     Lưu dữ liệu vào bảng Email trong PostgreSQL.
     """
-    print(f"📧 Email: {email_id} | Số tiền: {price} | Ghi chú: {note} | Ngày: {created_date}")
+    print(f"📧 Email: {email_id} | Số tiền: {price} | Ghi chú: {note}")
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cursor = conn.cursor()
-        month = created_date.month  # Lấy tháng từ ngày gửi email
+        month = sent_date.month
         
         query = """
         INSERT INTO "Email" ("emailId", "expense", "createdAt", "month", "price", "note") 
@@ -78,7 +79,7 @@ def save_to_db(email_id, subject, snippet, price, note, created_date):
         ON CONFLICT ("emailId") DO NOTHING;
         """
         
-        cursor.execute(query, (email_id, subject, created_date, month, price, note))
+        cursor.execute(query, (email_id, subject, sent_date, month, price, note))
         conn.commit()
         cursor.close()
         conn.close()
@@ -97,8 +98,8 @@ def fetch_unread_emails():
 
     try:
         service = build('gmail', 'v1', credentials=creds)
-        today = datetime.date.today()
-        three_days_ago = today - datetime.timedelta(days=20)
+        today = date.today() + timedelta(days=1)
+        three_days_ago = today - timedelta(days=20)
         query = f"from:support@timo.vn after:{three_days_ago.strftime('%Y/%m/%d')} before:{today.strftime('%Y/%m/%d')}"
         results = service.users().messages().list(userId='me', q=query).execute()
         messages = results.get('messages', [])
@@ -111,23 +112,29 @@ def fetch_unread_emails():
             msg_id = msg['id']
             email_detail = service.users().messages().get(userId='me', id=msg_id).execute()
             headers = email_detail.get("payload", {}).get("headers", [])
+            
+            # Extract subject and date
             subject = next((h["value"] for h in headers if h["name"] == "Subject"), "No Subject")
+            date_str = next((h["value"] for h in headers if h["name"] == "Date"), None)
+            
+            # Parse email date
+            sent_date = datetime.now()  # Default to current time if parsing fails
+            if date_str:
+                try:
+                    # Parse the email date string
+                    parsed_date = email.utils.parsedate_to_datetime(date_str)
+                    sent_date = parsed_date
+                except Exception as e:
+                    print(f"❌ Lỗi khi parse ngày tháng: {e}")
+            
             snippet = email_detail.get("snippet", "")
             content = subject + " " + snippet
-
-            # Lấy thời gian gửi email
-            received_date = next((h["value"] for h in headers if h["name"] == "Date"), None)
-            if received_date:
-                # Chuyển đổi định dạng ngày từ email sang datetime
-                created_date = datetime.datetime.strptime(received_date, "%a, %d %b %Y %H:%M:%S %z")
-            else:
-                created_date = datetime.datetime.now()
 
             # Trích xuất số tiền, loại giao dịch và ghi chú
             price, note = extract_transaction_info(content)
 
-            # Lưu vào DB với thời gian gửi email
-            save_to_db(msg_id, subject, snippet, price, note, created_date)
+            # Lưu vào DB với ngày gửi email
+            save_to_db(msg_id, subject, snippet, price, note, sent_date)
 
     except Exception as e:
         print(f"❌ Lỗi khi lấy email: {e}")
