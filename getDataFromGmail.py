@@ -98,7 +98,7 @@ def fetch_unread_emails():
     try:
         service = build('gmail', 'v1', credentials=creds)
         today = datetime.date.today()
-        three_days_ago = today - datetime.timedelta(days=3)
+        three_days_ago = today - datetime.timedelta(days=20)
         query = f"from:support@timo.vn after:{three_days_ago.strftime('%Y/%m/%d')} before:{today.strftime('%Y/%m/%d')}"
         results = service.users().messages().list(userId='me', q=query).execute()
         messages = results.get('messages', [])
