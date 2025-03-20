@@ -65,11 +65,12 @@ class EmailBot:
     async def reset_bot(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /reset_bot command"""
         try:
-            # Run getDataFromGmail.py
+            # Run getDataFromGmail.py with venv python
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             await update.message.reply_text(f"🔄 Đang cập nhật dữ liệu từ Gmail... ({current_time})")
             
-            subprocess.run(['python', 'getDataFromGmail.py'], check=True)
+            # Use python3 from virtual environment
+            subprocess.run(['venv/bin/python3', 'getDataFromGmail.py'], check=True)
             
             # Check for unread transactions
             conn = psycopg2.connect(**DB_CONFIG)
@@ -372,7 +373,8 @@ class EmailBot:
             try:
                 current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 logging.info(f"Running getDataFromGmail.py at {current_time}")
-                subprocess.run(['python', 'getDataFromGmail.py'], check=True)
+                # Use python3 from virtual environment
+                subprocess.run(['venv/bin/python3', 'getDataFromGmail.py'], check=True)
                 logging.info("getDataFromGmail.py completed successfully")
             except subprocess.CalledProcessError as e:
                 logging.error(f"Error running getDataFromGmail.py: {e}")
