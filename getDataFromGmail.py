@@ -62,23 +62,23 @@ def extract_transaction_info(text):
     
     return price, note
 
-def save_to_db(email_id, subject, snippet, price, note):
+def save_to_db(email_id, subject, snippet, price, note, created_date):
     """
     Lưu dữ liệu vào bảng Email trong PostgreSQL.
     """
-    print(f"📧 Email: {email_id} | Số tiền: {price} | Ghi chú: {note}")
+    print(f"📧 Email: {email_id} | Số tiền: {price} | Ghi chú: {note} | Ngày: {created_date}")
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cursor = conn.cursor()
-        month = datetime.datetime.now().month
+        month = created_date.month  # Lấy tháng từ ngày gửi email
         
         query = """
         INSERT INTO "Email" ("emailId", "expense", "createdAt", "month", "price", "note") 
-        VALUES (%s, %s, CURRENT_TIMESTAMP, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s)
         ON CONFLICT ("emailId") DO NOTHING;
         """
         
-        cursor.execute(query, (email_id, subject, month, price, note))
+        cursor.execute(query, (email_id, subject, created_date, month, price, note))
         conn.commit()
         cursor.close()
         conn.close()
@@ -113,13 +113,21 @@ def fetch_unread_emails():
             headers = email_detail.get("payload", {}).get("headers", [])
             subject = next((h["value"] for h in headers if h["name"] == "Subject"), "No Subject")
             snippet = email_detail.get("snippet", "")
-            content = subject + " " + snippet  # Kết hợp tiêu đề và nội dung tóm tắt
+            content = subject + " " + snippet
+
+            # Lấy thời gian gửi email
+            received_date = next((h["value"] for h in headers if h["name"] == "Date"), None)
+            if received_date:
+                # Chuyển đổi định dạng ngày từ email sang datetime
+                created_date = datetime.datetime.strptime(received_date, "%a, %d %b %Y %H:%M:%S %z")
+            else:
+                created_date = datetime.datetime.now()
 
             # Trích xuất số tiền, loại giao dịch và ghi chú
             price, note = extract_transaction_info(content)
 
-            # Lưu vào DB
-            save_to_db(msg_id, subject, snippet, price, note)
+            # Lưu vào DB với thời gian gửi email
+            save_to_db(msg_id, subject, snippet, price, note, created_date)
 
     except Exception as e:
         print(f"❌ Lỗi khi lấy email: {e}")
