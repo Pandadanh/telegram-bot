@@ -12,6 +12,24 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import pickle
+import speech_recognition as sr
+from pydub import AudioSegment
+import tempfile
+import requests
+import json
+import google.generativeai as genai
+import pytesseract
+from PIL import Image
+import io
+from googlesearch import search
+import aiohttp
+from bs4 import BeautifulSoup
+import re
+import base64
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
+import uuid
 
 # Load environment variables
 load_dotenv()
@@ -25,6 +43,13 @@ logging.basicConfig(
 # Get environment variables
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+
+# Configure Cloudinary
+cloudinary.config(
+    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+    api_key=os.getenv('CLOUDINARY_API_KEY'),
+    api_secret=os.getenv('CLOUDINARY_API_SECRET')
+)
 
 # Database configuration
 DB_CONFIG = {
@@ -43,6 +68,9 @@ class EmailBot:
         self.check = True
         self.current_email = None
         self.application = Application.builder().token(TOKEN).build()
+        self.ai_report_mode = {}  # Dictionary to track AI report mode for each user
+        self.search_mode = {}  # Dictionary to track search mode for each user
+        self.place_search_mode = {}  # Dictionary to track place search mode for each user
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
@@ -51,14 +79,27 @@ class EmailBot:
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
         help_text = """
-        Các lệnh có sẵn:
-        1. /reset_bot: Reset bot
-        2. /check_bot: Kiểm tra thông báo
-        3. /check_outlay: Kiểm tra tiền đã tiêu trong tháng
-        4. /report: Xem thống kê chi tiêu theo danh mục
-        5. /help: Hiển thị các lệnh hỗ trợ
-        6. /name_love: Hiển thị tên người yêu
+        📱 Các lệnh có sẵn:
+
+        🔧 Lệnh Cơ Bản:
+        1. /help: Hiển thị các lệnh hỗ trợ
+        2. /reset_bot: Reset bot
+        3. /name_love: Hiển thị tên người yêu
+
+        💰 Quản Lý Tài Chính:
+        4. /check_bot: Kiểm tra thông báo
+        5. /check_outlay: Kiểm tra tiền đã tiêu trong tháng
+        6. /report: Xem thống kê chi tiêu theo danh mục
         7. /check_outlay_web: Xem báo cáo chi tiêu trực quan
+
+        🤖 Tính Năng AI:
+        8. /bot_ai_gen_report: Bật chế độ phân tích tin nhắn thoại
+        9. /bot_ai_gen_report_image: Bật chế độ phân tích ảnh
+        10. /exit: Thoát chế độ phân tích
+
+        🔍 Tính Năng Tìm Kiếm:
+        11. /search: Tìm kiếm thông tin với AI
+        12. /place_search: Tìm kiếm địa điểm và hiển thị Google Maps
         """
         await update.message.reply_text(help_text)
 
@@ -261,11 +302,69 @@ class EmailBot:
             "https://pandadanh.github.io/report-Financial/"
         )
 
+    async def bot_ai_gen_report(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /bot_ai_gen_report command"""
+        user_id = update.effective_user.id
+        self.ai_report_mode[user_id] = True
+        
+        await update.message.reply_text(
+            "🤖 Chế độ tạo báo cáo AI đã được kích hoạt!\n\n"
+            "Bạn có thể gửi tin nhắn thoại để tôi phân tích.\n"
+            "Mỗi tin nhắn thoại sẽ được phân tích thành 3 phần:\n"
+            "1. Hôm qua đã làm gì\n"
+            "2. Hôm nay sẽ làm gì\n"
+            "3. Những khó khăn\n\n"
+            "Gửi /exit để thoát chế độ này."
+        )
+
+    async def exit_ai_report(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /exit command"""
+        user_id = update.effective_user.id
+        if user_id in self.ai_report_mode:
+            del self.ai_report_mode[user_id]
+            await update.message.reply_text("✅ Đã thoát chế độ tạo báo cáo AI!")
+        else:
+            await update.message.reply_text("❌ Bạn chưa ở trong chế độ tạo báo cáo AI!")
+
+    async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /search command"""
+        user_id = update.effective_user.id
+        self.search_mode[user_id] = True
+        
+        await update.message.reply_text(
+            "🔍 Chế độ tìm kiếm đã được kích hoạt!\n\n"
+            "Bạn muốn tìm kiếm gì?\n"
+            "Gửi /exit để thoát chế độ tìm kiếm."
+        )
+
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle incoming messages"""
         try:
             message = update.message.text
+            user_id = update.effective_user.id
             reply_to_message = update.message.reply_to_message
+
+            # Check if user is in search mode
+            if user_id in self.search_mode:
+                if message.lower() == '/exit':
+                    del self.search_mode[user_id]
+                    await update.message.reply_text("✅ Đã thoát chế độ tìm kiếm!")
+                    return
+                
+                # Process search query
+                await self.process_search_query(update, message)
+                return
+
+            # Check if user is in place search mode
+            if user_id in self.place_search_mode:
+                if message.lower() == '/exit':
+                    del self.place_search_mode[user_id]
+                    await update.message.reply_text("✅ Đã thoát chế độ tìm kiếm địa điểm!")
+                    return
+                
+                # Process place search query
+                await self.process_place_search_query(update, message)
+                return
 
             if reply_to_message:
                 if self.current_email:
@@ -340,11 +439,104 @@ class EmailBot:
                     await self.name_love(update, context)
                 elif message in ['/check_outlay_web', 'Check-outlay-web']:
                     await self.check_outlay_web(update, context)
+                elif message in ['/bot_ai_gen_report', 'Bot-AI-gen-report']:
+                    await self.bot_ai_gen_report(update, context)
+                elif message in ['/exit', 'Exit']:
+                    await self.exit_ai_report(update, context)
+                elif message in ['/search', 'Search']:
+                    await self.search_command(update, context)
+                elif message in ['/place_search', 'Place-search']:
+                    await self.place_search_command(update, context)
                 else:
                     await update.message.reply_text("❌ Lệnh không hợp lệ. Hãy thử /help để xem danh sách lệnh hỗ trợ!")
 
         except Exception as e:
             logging.error(f"Error handling message: {e}")
+
+    async def process_search_query(self, update: Update, query: str):
+        """Process a search query and ask for more"""
+        try:
+            # Configure Gemini API
+            genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+            model = genai.GenerativeModel('gemini-2.0-flash')
+            
+            # Create prompt for enhancing search query
+            prompt = f"""
+            Hãy tạo câu truy vấn tìm kiếm chi tiết và đầy đủ hơn từ câu truy vấn sau:
+            "{query}"
+            
+            Hãy:
+            1. Thêm các từ khóa liên quan
+            2. Làm rõ mục đích tìm kiếm
+            3. Thêm các tiêu chí cụ thể
+            4. Giữ nguyên ý nghĩa gốc
+            
+            Chỉ trả về câu truy vấn đã được cải thiện, không thêm giải thích.
+            """
+            
+            # Generate enhanced query using Gemini
+            response = model.generate_content(prompt)
+            enhanced_query = response.text.strip()
+            
+            # Send initial message
+            await update.message.reply_text(
+                f"🔍 Đang tìm kiếm với câu truy vấn:\n{enhanced_query}\n\n"
+                "Vui lòng đợi trong giây lát..."
+            )
+            
+            # Perform web search
+            search_results = []
+            async with aiohttp.ClientSession() as session:
+                # Get top 5 search results
+                for url in search(enhanced_query, num_results=5):
+                    try:
+                        async with session.get(url, timeout=10) as response:
+                            if response.status == 200:
+                                html = await response.text()
+                                soup = BeautifulSoup(html, 'html.parser')
+                                
+                                # Extract title
+                                title = soup.title.string if soup.title else url
+                                
+                                # Extract description
+                                meta_desc = soup.find('meta', {'name': 'description'})
+                                description = meta_desc['content'] if meta_desc else "Không có mô tả"
+                                
+                                # Clean up text
+                                title = re.sub(r'\s+', ' ', title).strip()
+                                description = re.sub(r'\s+', ' ', description).strip()
+                                
+                                search_results.append({
+                                    'title': title,
+                                    'description': description,
+                                    'url': url
+                                })
+                    except Exception as e:
+                        logging.error(f"Error fetching {url}: {e}")
+                        continue
+            
+            # Format and send results
+            if search_results:
+                message = "📊 Kết quả tìm kiếm:\n\n"
+                for i, result in enumerate(search_results, 1):
+                    message += f"{i}. {result['title']}\n"
+                    message += f"📝 {result['description']}\n"
+                    message += f"🔗 {result['url']}\n\n"
+                
+                message += "Bạn muốn tìm kiếm gì nữa không?\nGửi /exit để thoát chế độ tìm kiếm."
+                await update.message.reply_text(message)
+            else:
+                await update.message.reply_text(
+                    "❌ Không tìm thấy kết quả nào!\n\n"
+                    "Bạn muốn tìm kiếm gì nữa không?\nGửi /exit để thoát chế độ tìm kiếm."
+                )
+                
+        except Exception as e:
+            await update.message.reply_text(
+                "❌ Có lỗi xảy ra khi tìm kiếm!\n\n"
+                "Bạn muốn tìm kiếm gì nữa không?\nGửi /exit để thoát chế độ tìm kiếm."
+            )
+            logging.error(f"Error in search: {e}")
 
     async def get_total_expense(self):
         """Get total expense for current month"""
@@ -465,6 +657,287 @@ class EmailBot:
                 logging.error(f"Error in auto-resend: {e}")
                 break
 
+    async def handle_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle voice messages"""
+        try:
+            user_id = update.effective_user.id
+            
+            # Check if user is in AI report mode
+            if user_id not in self.ai_report_mode:
+                await update.message.reply_text(
+                    "❌ Bạn cần sử dụng lệnh /bot_ai_gen_report trước khi gửi tin nhắn thoại!"
+                )
+                return
+
+            # Download the voice message
+            voice = update.message.voice
+            voice_file = await context.bot.get_file(voice.file_id)
+            
+            # Create temporary files for audio processing
+            with tempfile.NamedTemporaryFile(suffix='.ogg', delete=False) as ogg_file, \
+                 tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as wav_file:
+                
+                # Download voice message as OGG file
+                await voice_file.download_to_drive(ogg_file.name)
+                
+                # Convert OGG to WAV using pydub
+                audio = AudioSegment.from_ogg(ogg_file.name)
+                audio.export(wav_file.name, format="wav")
+                
+                # Initialize speech recognition
+                recognizer = sr.Recognizer()
+                
+                # Transcribe audio to text
+                with sr.AudioFile(wav_file.name) as source:
+                    audio_data = recognizer.record(source)
+                    text = recognizer.recognize_google(audio_data, language='vi-VN')  # Vietnamese language
+                    
+                    # Configure Gemini API
+                    genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+                    model = genai.GenerativeModel('gemini-2.0-flash')
+                    
+                    # Create prompt for analysis
+                    prompt = f"""
+                    Hãy phân tích và tóm tắt nội dung sau thành 3 phần:
+                    1. Hôm qua đã làm gì
+                    2. Hôm nay sẽ làm gì
+                    3. Những khó khăn
+                    
+                    Nội dung: {text}
+                    
+                    Hãy trả lời theo định dạng:
+                    HÔM QUA:
+                    - Điểm 1
+                    - Điểm 2
+                    ...
+                    
+                    HÔM NAY:
+                    - Điểm 1
+                    - Điểm 2
+                    ...
+                    
+                    KHÓ KHĂN:
+                    - Điểm 1
+                    - Điểm 2
+                    ...
+                    """
+                    
+                    # Generate response using Gemini
+                    response = model.generate_content(prompt)
+                    
+                    if response.text:
+                        # Send both original transcription and AI summary
+                        await update.message.reply_text(
+                            "🎤 Nội dung tin nhắn thoại của bạn:\n\n"
+                            f"📝 {text}\n\n"
+                            "🤖 Phân tích AI:\n\n"
+                            f"{response.text}\n\n"
+                            "Gửi tin nhắn thoại khác hoặc /exit để thoát."
+                        )
+                    else:
+                        # If AI analysis fails, just send the transcription
+                        await update.message.reply_text(
+                            "🎤 Nội dung tin nhắn thoại của bạn:\n\n"
+                            f"📝 {text}\n\n"
+                            "❌ Không thể phân tích AI lúc này.\n"
+                            "Gửi tin nhắn thoại khác hoặc /exit để thoát."
+                        )
+                
+                # Clean up temporary files
+                os.unlink(ogg_file.name)
+                os.unlink(wav_file.name)
+                
+        except sr.UnknownValueError:
+            await update.message.reply_text("❌ Không thể nhận dạng giọng nói. Vui lòng thử lại!")
+        except sr.RequestError as e:
+            await update.message.reply_text("❌ Lỗi khi kết nối với dịch vụ nhận dạng giọng nói!")
+            logging.error(f"Speech recognition error: {e}")
+        except Exception as e:
+            await update.message.reply_text("❌ Có lỗi xảy ra khi xử lý tin nhắn thoại!")
+            logging.error(f"Error handling voice message: {e}")
+
+    async def bot_ai_gen_report_image(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /bot_ai_gen_report_image command"""
+        user_id = update.effective_user.id
+        self.ai_report_mode[user_id] = 'image'
+        
+        await update.message.reply_text(
+            "🤖 Chế độ phân tích ảnh đã được kích hoạt!\n\n"
+            "Bạn có thể gửi ảnh để tôi phân tích.\n"
+            "Tôi sẽ:\n"
+            "1. Chuyển ảnh thành văn bản\n"
+            "2. Định dạng văn bản\n"
+            "3. Gửi lại kết quả\n\n"
+            "Gửi /exit để thoát chế độ này."
+        )
+
+    async def handle_image(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle image messages"""
+        try:
+            user_id = update.effective_user.id
+            
+            # Check if user is in image analysis mode
+            if user_id in self.ai_report_mode and self.ai_report_mode[user_id] == 'image':
+                # Get the image file
+                photo = update.message.photo[-1]  # Get the largest size
+                file = await context.bot.get_file(photo.file_id)
+                
+                # Download the image
+                image_bytes = await file.download_as_bytearray()
+                
+                # Convert to PIL Image
+                image = Image.open(io.BytesIO(image_bytes))
+                
+                # Extract text using OCR
+                text = pytesseract.image_to_string(image, lang='vie')
+                
+                if not text.strip():
+                    await update.message.reply_text("❌ Không thể nhận dạng văn bản từ ảnh. Vui lòng thử lại!")
+                    return
+                
+                # Configure Gemini API
+                genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+                model = genai.GenerativeModel('gemini-2.0-flash')
+                
+                # Create prompt for formatting
+                prompt = f"""
+                Hãy định dạng và làm rõ văn bản sau một cách chuyên nghiệp và dễ đọc:
+                
+                {text}
+                
+                Hãy:
+                1. Sửa lỗi chính tả
+                2. Thêm dấu câu nếu cần
+                3. Định dạng lại cấu trúc câu
+                4. Giữ nguyên ý nghĩa gốc
+                """
+                
+                # Generate formatted text using Gemini
+                response = model.generate_content(prompt)
+                
+                if response.text:
+                    await update.message.reply_text(
+                        "📸 Văn bản từ ảnh của bạn:\n\n"
+                        f"📝 {text}\n\n"
+                        "✨ Văn bản đã được định dạng:\n\n"
+                        f"{response.text}\n\n"
+                        "Gửi ảnh khác hoặc /exit để thoát."
+                    )
+                else:
+                    await update.message.reply_text(
+                        "📸 Văn bản từ ảnh của bạn:\n\n"
+                        f"📝 {text}\n\n"
+                        "❌ Không thể định dạng văn bản lúc này.\n"
+                        "Gửi ảnh khác hoặc /exit để thoát."
+                    )
+                
+        except Exception as e:
+            await update.message.reply_text("❌ Có lỗi xảy ra khi xử lý ảnh!")
+            logging.error(f"Error handling image: {e}")
+
+    async def place_search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /place_search command"""
+        user_id = update.effective_user.id
+        self.place_search_mode[user_id] = True
+        
+        await update.message.reply_text(
+            "📍 Chế độ tìm kiếm địa điểm đã được kích hoạt!\n\n"
+            "Bạn muốn tìm kiếm địa điểm gì?\n"
+            "Gửi /exit để thoát chế độ tìm kiếm."
+        )
+
+    async def process_place_search_query(self, update: Update, query: str):
+        """Process a place search query and ask for more"""
+        try:
+            # Configure Gemini API
+            genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+            model = genai.GenerativeModel('gemini-2.0-flash')
+            
+            # Create prompt for enhancing search query
+            prompt = f"""
+            Hãy tạo câu truy vấn tìm kiếm địa điểm chi tiết và đầy đủ hơn từ câu truy vấn sau:
+            "{query}"
+            
+            Hãy:
+            1. Thêm từ khóa "location" hoặc "place"
+            2. Thêm từ khóa "address" hoặc "địa chỉ"
+            3. Thêm từ khóa "review" hoặc "đánh giá"
+            4. Giữ nguyên ý nghĩa gốc
+            
+            Chỉ trả về câu truy vấn đã được cải thiện, không thêm giải thích.
+            """
+            
+            # Generate enhanced query using Gemini
+            response = model.generate_content(prompt)
+            enhanced_query = response.text.strip()
+            
+            # Send initial message
+            await update.message.reply_text(
+                f"🔍 Đang tìm kiếm địa điểm với câu truy vấn:\n{enhanced_query}\n\n"
+                "Vui lòng đợi trong giây lát..."
+            )
+            
+            # Perform web search
+            search_results = []
+            async with aiohttp.ClientSession() as session:
+                # Get top 5 search results
+                for url in search(enhanced_query, num_results=5):
+                    try:
+                        async with session.get(url, timeout=10) as response:
+                            if response.status == 200:
+                                html = await response.text()
+                                soup = BeautifulSoup(html, 'html.parser')
+                                
+                                # Extract title
+                                title = soup.title.string if soup.title else url
+                                
+                                # Extract description
+                                meta_desc = soup.find('meta', {'name': 'description'})
+                                description = meta_desc['content'] if meta_desc else "Không có mô tả"
+                                
+                                # Clean up text
+                                title = re.sub(r'\s+', ' ', title).strip()
+                                description = re.sub(r'\s+', ' ', description).strip()
+                                
+                                # Create Google Maps search URL
+                                maps_query = f"{title} {description}"
+                                maps_query = re.sub(r'[^\w\s]', '', maps_query)  # Remove special characters
+                                maps_url = f"https://www.google.com/maps/search/{maps_query.replace(' ', '+')}"
+                                
+                                search_results.append({
+                                    'title': title,
+                                    'description': description,
+                                    'url': url,
+                                    'maps_url': maps_url
+                                })
+                    except Exception as e:
+                        logging.error(f"Error fetching {url}: {e}")
+                        continue
+            
+            # Format and send results
+            if search_results:
+                message = "📍 Kết quả tìm kiếm địa điểm:\n\n"
+                for i, result in enumerate(search_results, 1):
+                    message += f"{i}. {result['title']}\n"
+                    message += f"📝 {result['description']}\n"
+                    message += f"🔗 {result['url']}\n"
+                    message += f"🗺️ Google Maps: {result['maps_url']}\n\n"
+                
+                message += "Bạn muốn tìm kiếm địa điểm nào nữa không?\nGửi /exit để thoát chế độ tìm kiếm."
+                await update.message.reply_text(message)
+            else:
+                await update.message.reply_text(
+                    "❌ Không tìm thấy địa điểm nào!\n\n"
+                    "Bạn muốn tìm kiếm địa điểm nào nữa không?\nGửi /exit để thoát chế độ tìm kiếm."
+                )
+                
+        except Exception as e:
+            await update.message.reply_text(
+                "❌ Có lỗi xảy ra khi tìm kiếm địa điểm!\n\n"
+                "Bạn muốn tìm kiếm địa điểm nào nữa không?\nGửi /exit để thoát chế độ tìm kiếm."
+            )
+            logging.error(f"Error in place search: {e}")
+
     def run(self):
         """Start the bot and the schedulers"""
         # Add handlers
@@ -476,6 +949,13 @@ class EmailBot:
         self.application.add_handler(CommandHandler("report", self.report_command))
         self.application.add_handler(CommandHandler("name_love", self.name_love))
         self.application.add_handler(CommandHandler("check_outlay_web", self.check_outlay_web))
+        self.application.add_handler(CommandHandler("bot_ai_gen_report", self.bot_ai_gen_report))
+        self.application.add_handler(CommandHandler("bot_ai_gen_report_image", self.bot_ai_gen_report_image))
+        self.application.add_handler(CommandHandler("exit", self.exit_ai_report))
+        self.application.add_handler(CommandHandler("search", self.search_command))
+        self.application.add_handler(CommandHandler("place_search", self.place_search_command))
+        self.application.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
+        self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_image))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
         # Create event loop
