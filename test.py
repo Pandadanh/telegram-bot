@@ -320,11 +320,28 @@ class EmailBot:
     async def exit_ai_report(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /exit command"""
         user_id = update.effective_user.id
+        modes_exited = []
+        
+        # Exit AI report mode
         if user_id in self.ai_report_mode:
             del self.ai_report_mode[user_id]
-            await update.message.reply_text("✅ Đã thoát chế độ tạo báo cáo AI!")
+            modes_exited.append("tạo báo cáo AI")
+            
+        # Exit search mode
+        if user_id in self.search_mode:
+            del self.search_mode[user_id]
+            modes_exited.append("tìm kiếm")
+            
+        # Exit place search mode
+        if user_id in self.place_search_mode:
+            del self.place_search_mode[user_id]
+            modes_exited.append("tìm kiếm địa điểm")
+            
+        if modes_exited:
+            modes_str = ", ".join(modes_exited)
+            await update.message.reply_text(f"✅ Đã thoát chế độ {modes_str}!")
         else:
-            await update.message.reply_text("❌ Bạn chưa ở trong chế độ tạo báo cáo AI!")
+            await update.message.reply_text("❌ Bạn chưa ở trong bất kỳ chế độ nào!")
 
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /search command"""
@@ -347,8 +364,7 @@ class EmailBot:
             # Check if user is in search mode
             if user_id in self.search_mode:
                 if message.lower() == '/exit':
-                    del self.search_mode[user_id]
-                    await update.message.reply_text("✅ Đã thoát chế độ tìm kiếm!")
+                    await self.exit_ai_report(update, context)
                     return
                 
                 # Process search query
@@ -358,8 +374,7 @@ class EmailBot:
             # Check if user is in place search mode
             if user_id in self.place_search_mode:
                 if message.lower() == '/exit':
-                    del self.place_search_mode[user_id]
-                    await update.message.reply_text("✅ Đã thoát chế độ tìm kiếm địa điểm!")
+                    await self.exit_ai_report(update, context)
                     return
                 
                 # Process place search query
@@ -668,6 +683,11 @@ class EmailBot:
                     "❌ Bạn cần sử dụng lệnh /bot_ai_gen_report trước khi gửi tin nhắn thoại!"
                 )
                 return
+                
+            # Check if the message is a text message with /exit
+            if update.message.text and update.message.text.lower() == '/exit':
+                await self.exit_ai_report(update, context)
+                return
 
             # Download the voice message
             voice = update.message.voice
@@ -778,6 +798,11 @@ class EmailBot:
             
             # Check if user is in image analysis mode
             if user_id in self.ai_report_mode and self.ai_report_mode[user_id] == 'image':
+                # Check if the message is a text message with /exit
+                if update.message.text and update.message.text.lower() == '/exit':
+                    await self.exit_ai_report(update, context)
+                    return
+                    
                 # Get the image file
                 photo = update.message.photo[-1]  # Get the largest size
                 file = await context.bot.get_file(photo.file_id)
@@ -954,6 +979,8 @@ class EmailBot:
         self.application.add_handler(CommandHandler("exit", self.exit_ai_report))
         self.application.add_handler(CommandHandler("search", self.search_command))
         self.application.add_handler(CommandHandler("place_search", self.place_search_command))
+        
+        # Add message handlers
         self.application.add_handler(MessageHandler(filters.VOICE, self.handle_voice))
         self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_image))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
