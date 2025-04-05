@@ -390,7 +390,8 @@ class EmailBot:
                                 "❌ Cú pháp không đúng!\n"
                                 "Vui lòng nhập theo định dạng:\n"
                                 "DANH_MUC - chi tiết\n"
-                                "Ví dụ: MUA_SAM - mua quần áo"
+                                "Ví dụ: MUA_SAM - mua quần áo",
+                                quote=False
                             )
                             return
 
@@ -405,7 +406,8 @@ class EmailBot:
                                 "❌ Danh mục hoặc chi tiết không được để trống!\n"
                                 "Vui lòng nhập theo định dạng:\n"
                                 "DANH_MUC - chi tiết\n"
-                                "Ví dụ: MUA_SAM - mua quần áo"
+                                "Ví dụ: MUA_SAM - mua quần áo",
+                                quote=False
                             )
                             return
 
@@ -431,12 +433,21 @@ class EmailBot:
                         
                         total = await self.get_total_expense()
                         formatted_total = "{:,.0f}".format(total)
-                        await update.message.reply_text(f"✅ Đã lưu thông tin chi tiêu!\nDanh mục: {category}\nChi tiết: {expense}\nTổng chi tiêu tháng: {formatted_total}")
+                        await update.message.reply_text(
+                            f"✅ Đã lưu thông tin chi tiêu!\nDanh mục: {category}\nChi tiết: {expense}\nTổng chi tiêu tháng: {formatted_total}",
+                            quote=False
+                        )
                     except Exception as e:
                         logging.error(f"Error saving reply: {e}")
-                        await update.message.reply_text("❌ Lỗi khi lưu phản hồi! Vui lòng thử lại.")
+                        await update.message.reply_text(
+                            "❌ Lỗi khi lưu phản hồi! Vui lòng thử lại.",
+                            quote=False
+                        )
                 else:
-                    await update.message.reply_text("⚠️ Không có email nào đang chờ phản hồi!")
+                    await update.message.reply_text(
+                        "⚠️ Không có email nào đang chờ phản hồi!",
+                        quote=False
+                    )
             else:
                 if message in ['/reset_bot', 'Reset-bot']:
                     self.check = True
