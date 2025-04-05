@@ -425,18 +425,34 @@ class EmailBot:
                         
                         cursor.execute(query, (category, expense, self.current_email["emailId"]))
                         conn.commit()
+                        
+                        # Verify if the update was successful
+                        verify_query = """
+                        SELECT "isRead", "category", "expense"
+                        FROM "Email"
+                        WHERE "emailId" = %s;
+                        """
+                        
+                        cursor.execute(verify_query, (self.current_email["emailId"],))
+                        result = cursor.fetchone()
                         cursor.close()
                         conn.close()
                         
-                        self.current_email = None
-                        self.check = True
-                        
-                        total = await self.get_total_expense()
-                        formatted_total = "{:,.0f}".format(total)
-                        await update.message.reply_text(
-                            f"✅ Đã lưu thông tin chi tiêu!\nDanh mục: {category}\nChi tiết: {expense}\nTổng chi tiêu tháng: {formatted_total}",
-                            quote=False
-                        )
+                        if result and result[0] and result[1] == category and result[2] == expense:
+                            self.current_email = None
+                            self.check = True
+                            
+                            total = await self.get_total_expense()
+                            formatted_total = "{:,.0f}".format(total)
+                            await update.message.reply_text(
+                                f"✅ Đã lưu thông tin chi tiêu!\nDanh mục: {category}\nChi tiết: {expense}\nTổng chi tiêu tháng: {formatted_total}",
+                                quote=False
+                            )
+                        else:
+                            await update.message.reply_text(
+                                "❌ Không thể lưu thông tin! Vui lòng thử lại.",
+                                quote=False
+                            )
                     except Exception as e:
                         logging.error(f"Error saving reply: {e}")
                         await update.message.reply_text(
