@@ -384,6 +384,9 @@ class EmailBot:
             if reply_to_message:
                 if self.current_email:
                     try:
+                        # Log the received message for debugging
+                        logging.info(f"Received reply message: {message}")
+                        
                         # Validate reply syntax
                         if ' - ' not in message:
                             await update.message.reply_text(
@@ -400,6 +403,9 @@ class EmailBot:
                         category = category.strip().upper()
                         expense = expense.strip()
 
+                        # Log parsed data
+                        logging.info(f"Parsed category: {category}, expense: {expense}")
+
                         # Validate category and expense
                         if not category or not expense:
                             await update.message.reply_text(
@@ -411,6 +417,9 @@ class EmailBot:
                             )
                             return
 
+                        # Log current email for debugging
+                        logging.info(f"Current email: {self.current_email}")
+
                         # Save reply as note with category and expense
                         conn = psycopg2.connect(**DB_CONFIG)
                         cursor = conn.cursor()
@@ -420,48 +429,53 @@ class EmailBot:
                         SET "isRead" = true,
                             "category" = %s,
                             "expense" = %s
-                        WHERE "emailId" = %s;
+                        WHERE "emailId" = %s
+                        RETURNING "emailId", "isRead", "category", "expense";
                         """
                         
                         cursor.execute(query, (category, expense, self.current_email["emailId"]))
-                        conn.commit()
-                        
-                        # Verify if the update was successful
-                        verify_query = """
-                        SELECT "isRead", "category", "expense"
-                        FROM "Email"
-                        WHERE "emailId" = %s;
-                        """
-                        
-                        cursor.execute(verify_query, (self.current_email["emailId"],))
                         result = cursor.fetchone()
+                        conn.commit()
                         cursor.close()
                         conn.close()
+
+                        # Log database update result
+                        logging.info(f"Database update result: {result}")
                         
-                        if result and result[0] and result[1] == category and result[2] == expense:
+                        if result:
                             self.current_email = None
                             self.check = True
                             
                             total = await self.get_total_expense()
-                            formatted_total = "{:,.0f}".format(total)
+                            formatted_total = "{:,.0f}".format(abs(total))
+                            
+                            # First message - Confirmation of saving
                             await update.message.reply_text(
-                                f"✅ Đã lưu thông tin chi tiêu!\nDanh mục: {category}\nChi tiết: {expense}\nTổng chi tiêu tháng: {formatted_total}",
+                                f"✅ Đã lưu thông tin chi tiêu!\nDanh mục: {category}\nChi tiết: {expense}",
+                                quote=False
+                            )
+                            
+                            # Second message - Total expense
+                            await update.message.reply_text(
+                                f"💰 Đã chi tiêu trong tháng này!\nTổng: {formatted_total} VNĐ",
                                 quote=False
                             )
                         else:
                             await update.message.reply_text(
-                                "❌ Không thể lưu thông tin! Vui lòng thử lại.",
+                                "❌ Không thể lưu thông tin! Vui lòng thử lại sau.",
                                 quote=False
                             )
+                            
                     except Exception as e:
-                        logging.error(f"Error saving reply: {e}")
+                        logging.error(f"Error saving reply: {str(e)}")
                         await update.message.reply_text(
-                            "❌ Lỗi khi lưu phản hồi! Vui lòng thử lại.",
+                            f"❌ Lỗi khi lưu phản hồi: {str(e)}\nVui lòng thử lại.",
                             quote=False
                         )
                 else:
+                    logging.warning("No current email found for reply")
                     await update.message.reply_text(
-                        "⚠️ Không có email nào đang chờ phản hồi!",
+                        "⚠️ Không có email nào đang chờ phản hồi!\nVui lòng sử dụng lệnh /check_bot để xem các giao dịch chưa ghi chú.",
                         quote=False
                     )
             else:
