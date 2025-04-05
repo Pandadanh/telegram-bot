@@ -313,35 +313,8 @@ class EmailBot:
             "Mỗi tin nhắn thoại sẽ được phân tích thành 3 phần:\n"
             "1. Hôm qua đã làm gì\n"
             "2. Hôm nay sẽ làm gì\n"
-            "3. Những khó khăn\n\n"
-            "Gửi /exit để thoát chế độ này."
+            "3. Những khó khăn\n"
         )
-
-    async def exit_ai_report(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /exit command"""
-        user_id = update.effective_user.id
-        modes_exited = []
-        
-        # Exit AI report mode
-        if user_id in self.ai_report_mode:
-            del self.ai_report_mode[user_id]
-            modes_exited.append("tạo báo cáo AI")
-            
-        # Exit search mode
-        if user_id in self.search_mode:
-            del self.search_mode[user_id]
-            modes_exited.append("tìm kiếm")
-            
-        # Exit place search mode
-        if user_id in self.place_search_mode:
-            del self.place_search_mode[user_id]
-            modes_exited.append("tìm kiếm địa điểm")
-            
-        if modes_exited:
-            modes_str = ", ".join(modes_exited)
-            await update.message.reply_text(f"✅ Đã thoát chế độ {modes_str}!")
-        else:
-            await update.message.reply_text("❌ Bạn chưa ở trong bất kỳ chế độ nào!")
 
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /search command"""
@@ -350,8 +323,17 @@ class EmailBot:
         
         await update.message.reply_text(
             "🔍 Chế độ tìm kiếm đã được kích hoạt!\n\n"
-            "Bạn muốn tìm kiếm gì?\n"
-            "Gửi /exit để thoát chế độ tìm kiếm."
+            "Bạn muốn tìm kiếm gì?"
+        )
+
+    async def place_search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /place_search command"""
+        user_id = update.effective_user.id
+        self.place_search_mode[user_id] = True
+        
+        await update.message.reply_text(
+            "📍 Chế độ tìm kiếm địa điểm đã được kích hoạt!\n\n"
+            "Bạn muốn tìm kiếm địa điểm gì?"
         )
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -363,21 +345,11 @@ class EmailBot:
 
             # Check if user is in search mode
             if user_id in self.search_mode:
-                if message.lower() == '/exit':
-                    await self.exit_ai_report(update, context)
-                    return
-                
-                # Process search query
                 await self.process_search_query(update, message)
                 return
 
             # Check if user is in place search mode
             if user_id in self.place_search_mode:
-                if message.lower() == '/exit':
-                    await self.exit_ai_report(update, context)
-                    return
-                
-                # Process place search query
                 await self.process_place_search_query(update, message)
                 return
 
@@ -497,8 +469,6 @@ class EmailBot:
                     await self.check_outlay_web(update, context)
                 elif message in ['/bot_ai_gen_report', 'Bot-AI-gen-report']:
                     await self.bot_ai_gen_report(update, context)
-                elif message in ['/exit', 'Exit']:
-                    await self.exit_ai_report(update, context)
                 elif message in ['/search', 'Search']:
                     await self.search_command(update, context)
                 elif message in ['/place_search', 'Place-search']:
@@ -512,6 +482,7 @@ class EmailBot:
     async def process_search_query(self, update: Update, query: str):
         """Process a search query and ask for more"""
         try:
+            user_id = update.effective_user.id
             # Configure Gemini API
             genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
             model = genai.GenerativeModel('gemini-2.0-flash')
@@ -579,19 +550,26 @@ class EmailBot:
                     message += f"📝 {result['description']}\n"
                     message += f"🔗 {result['url']}\n\n"
                 
-                message += "Bạn muốn tìm kiếm gì nữa không?\nGửi /exit để thoát chế độ tìm kiếm."
+                message += "Bạn có thể dùng lệnh /search để tìm kiếm tiếp."
                 await update.message.reply_text(message)
             else:
                 await update.message.reply_text(
                     "❌ Không tìm thấy kết quả nào!\n\n"
-                    "Bạn muốn tìm kiếm gì nữa không?\nGửi /exit để thoát chế độ tìm kiếm."
+                    "Bạn có thể dùng lệnh /search để tìm kiếm lại."
                 )
+            
+            # Automatically exit search mode
+            if user_id in self.search_mode:
+                del self.search_mode[user_id]
                 
         except Exception as e:
             await update.message.reply_text(
                 "❌ Có lỗi xảy ra khi tìm kiếm!\n\n"
-                "Bạn muốn tìm kiếm gì nữa không?\nGửi /exit để thoát chế độ tìm kiếm."
+                "Bạn có thể dùng lệnh /search để thử lại."
             )
+            # Ensure we exit search mode even on error
+            if user_id in self.search_mode:
+                del self.search_mode[user_id]
             logging.error(f"Error in search: {e}")
 
     async def get_total_expense(self):
@@ -828,8 +806,7 @@ class EmailBot:
             "Tôi sẽ:\n"
             "1. Chuyển ảnh thành văn bản\n"
             "2. Định dạng văn bản\n"
-            "3. Gửi lại kết quả\n\n"
-            "Gửi /exit để thoát chế độ này."
+            "3. Gửi lại kết quả\n"
         )
 
     async def handle_image(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -900,17 +877,6 @@ class EmailBot:
         except Exception as e:
             await update.message.reply_text("❌ Có lỗi xảy ra khi xử lý ảnh!")
             logging.error(f"Error handling image: {e}")
-
-    async def place_search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /place_search command"""
-        user_id = update.effective_user.id
-        self.place_search_mode[user_id] = True
-        
-        await update.message.reply_text(
-            "📍 Chế độ tìm kiếm địa điểm đã được kích hoạt!\n\n"
-            "Bạn muốn tìm kiếm địa điểm gì?\n"
-            "Gửi /exit để thoát chế độ tìm kiếm."
-        )
 
     async def process_place_search_query(self, update: Update, query: str):
         """Process a place search query and ask for more"""
@@ -1017,7 +983,6 @@ class EmailBot:
         self.application.add_handler(CommandHandler("check_outlay_web", self.check_outlay_web))
         self.application.add_handler(CommandHandler("bot_ai_gen_report", self.bot_ai_gen_report))
         self.application.add_handler(CommandHandler("bot_ai_gen_report_image", self.bot_ai_gen_report_image))
-        self.application.add_handler(CommandHandler("exit", self.exit_ai_report))
         self.application.add_handler(CommandHandler("search", self.search_command))
         self.application.add_handler(CommandHandler("place_search", self.place_search_command))
         
