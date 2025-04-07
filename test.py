@@ -388,37 +388,39 @@ class EmailBot:
                         )
                         return
 
+                    # Extract transaction info from replied message
+                    replied_text = reply_to_message.text
+                    price_match = re.search(r'(\d+(?:,\d+)*) VNĐ', replied_text)
+                    note_match = re.search(r'Nội dung: (.+?)(?:\n|$)', replied_text)
+                    
+                    if not price_match or not note_match:
+                        await update.message.reply_text(
+                            "❌ Không thể tìm thấy thông tin giao dịch trong tin nhắn được trả lời!",
+                            quote=False
+                        )
+                        return
+                        
+                    # Convert price string to number
+                    price_str = price_match.group(1).replace(',', '')
+                    price = float(price_str)
+                    if 'giảm' in replied_text:
+                        price = -price
+                        
+                    note = note_match.group(1).strip()
+                    
                     # Save reply as note with category and expense
                     conn = psycopg2.connect(**DB_CONFIG)
                     cursor = conn.cursor()
                     
                     try:
-                        # Extract price and note from the replied message
-                        replied_text = reply_to_message.text
-                        price_match = re.search(r'(\d+(?:,\d+)*) VNĐ', replied_text)
-                        note_match = re.search(r'Nội dung: (.+?)(?:\n|$)', replied_text)
-                        
-                        if not price_match or not note_match:
-                            await update.message.reply_text(
-                                "❌ Không thể tìm thấy thông tin giao dịch trong tin nhắn được trả lời!",
-                                quote=False
-                            )
-                            return
-                            
-                        # Get the transaction from database
+                        # Find the transaction in database
                         query = """
                         SELECT "emailId" FROM "Email"
                         WHERE "price" = %s AND "note" = %s AND "isRead" = false
                         ORDER BY "createdAt" DESC LIMIT 1;
                         """
                         
-                        # Convert price string to number
-                        price_str = price_match.group(1).replace(',', '')
-                        price = float(price_str)
-                        if 'giảm' in replied_text:
-                            price = -price
-                            
-                        cursor.execute(query, (price, note_match.group(1)))
+                        cursor.execute(query, (price, note))
                         result = cursor.fetchone()
                         
                         if not result:
