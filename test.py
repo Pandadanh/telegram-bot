@@ -354,100 +354,120 @@ class EmailBot:
                 return
 
             if reply_to_message:
-                if self.current_email:
-                    try:
-                        # Log the received message for debugging
-                        logging.info(f"Received reply message: {message}")
-                        
-                        # Validate reply syntax
-                        if ' - ' not in message:
-                            await update.message.reply_text(
-                                "❌ Cú pháp không đúng!\n"
-                                "Vui lòng nhập theo định dạng:\n"
-                                "DANH_MUC - chi tiết\n"
-                                "Ví dụ: MUA_SAM - mua quần áo",
-                                quote=False
-                            )
-                            return
-
-                        # Parse reply message
-                        category, expense = message.split(' - ', 1)
-                        category = category.strip().upper()
-                        expense = expense.strip()
-
-                        # Log parsed data
-                        logging.info(f"Parsed category: {category}, expense: {expense}")
-
-                        # Validate category and expense
-                        if not category or not expense:
-                            await update.message.reply_text(
-                                "❌ Danh mục hoặc chi tiết không được để trống!\n"
-                                "Vui lòng nhập theo định dạng:\n"
-                                "DANH_MUC - chi tiết\n"
-                                "Ví dụ: MUA_SAM - mua quần áo",
-                                quote=False
-                            )
-                            return
-
-                        # Log current email for debugging
-                        logging.info(f"Current email: {self.current_email}")
-
-                        # Save reply as note with category and expense
-                        conn = psycopg2.connect(**DB_CONFIG)
-                        cursor = conn.cursor()
-                        
-                        query = """
-                        UPDATE "Email" 
-                        SET "isRead" = true,
-                            "category" = %s,
-                            "expense" = %s
-                        WHERE "emailId" = %s
-                        RETURNING "emailId", "isRead", "category", "expense";
-                        """
-                        
-                        cursor.execute(query, (category, expense, self.current_email["emailId"]))
-                        result = cursor.fetchone()
-                        conn.commit()
-                        cursor.close()
-                        conn.close()
-
-                        # Log database update result
-                        logging.info(f"Database update result: {result}")
-                        
-                        if result:
-                            self.current_email = None
-                            self.check = True
-                            
-                            total = await self.get_total_expense()
-                            formatted_total = "{:,.0f}".format(abs(total))
-                            
-                            # First message - Confirmation of saving
-                            await update.message.reply_text(
-                                f"✅ Đã lưu thông tin chi tiêu!\nDanh mục: {category}\nChi tiết: {expense}",
-                                quote=False
-                            )
-                            
-                            # Second message - Total expense
-                            await update.message.reply_text(
-                                f"💰 Đã chi tiêu trong tháng này!\nTổng: {formatted_total} VNĐ",
-                                quote=False
-                            )
-                        else:
-                            await update.message.reply_text(
-                                "❌ Không thể lưu thông tin! Vui lòng thử lại sau.",
-                                quote=False
-                            )
-                            
-                    except Exception as e:
-                        logging.error(f"Error saving reply: {str(e)}")
+                try:
+                    # Log the received message for debugging
+                    logging.info(f"Received reply message: {message}")
+                    
+                    # Extract email ID from the replied message
+                    replied_text = reply_to_message.text
+                    email_id_match = re.search(r'ID: (\d+)', replied_text)
+                    
+                    if not email_id_match:
                         await update.message.reply_text(
-                            f"❌ Lỗi khi lưu phản hồi: {str(e)}\nVui lòng thử lại.",
+                            "❌ Không tìm thấy ID email trong tin nhắn được trả lời!\n"
+                            "Vui lòng trả lời tin nhắn chứa thông tin giao dịch.",
                             quote=False
                         )
-                else:
-                    logging.warning("No current email found for reply")
+                        return
+                        
+                    email_id = email_id_match.group(1)
+                    
+                    # Validate reply syntax
+                    if ' - ' not in message:
+                        await update.message.reply_text(
+                            "❌ Cú pháp không đúng!\n"
+                            "Vui lòng nhập theo định dạng:\n"
+                            "DANH_MUC - chi tiết\n"
+                            "Ví dụ: MUA_SAM - mua quần áo",
+                            quote=False
+                        )
+                        return
+
+                    # Parse reply message
+                    category, expense = message.split(' - ', 1)
+                    category = category.strip().upper()
+                    expense = expense.strip()
+
+                    # Log parsed data
+                    logging.info(f"Parsed category: {category}, expense: {expense}")
+
+                    # Validate category and expense
+                    if not category or not expense:
+                        await update.message.reply_text(
+                            "❌ Danh mục hoặc chi tiết không được để trống!\n"
+                            "Vui lòng nhập theo định dạng:\n"
+                            "DANH_MUC - chi tiết\n"
+                            "Ví dụ: MUA_SAM - mua quần áo",
+                            quote=False
+                        )
+                        return
+
+                    # Save reply as note with category and expense
+                    conn = psycopg2.connect(**DB_CONFIG)
+                    cursor = conn.cursor()
+                    
+                    # First check if email exists and is unread
+                    check_query = """
+                    SELECT "emailId" FROM "Email"
+                    WHERE "emailId" = %s AND "isRead" = false;
+                    """
+                    cursor.execute(check_query, (email_id,))
+                    email_exists = cursor.fetchone()
+                    
+                    if not email_exists:
+                        await update.message.reply_text(
+                            "❌ Không tìm thấy giao dịch chưa đọc với ID này!\n"
+                            "Vui lòng kiểm tra lại hoặc sử dụng /check_bot để xem danh sách giao dịch chưa ghi chú.",
+                            quote=False
+                        )
+                        cursor.close()
+                        conn.close()
+                        return
+                    
+                    # Update the email
+                    update_query = """
+                    UPDATE "Email" 
+                    SET "isRead" = true,
+                        "category" = %s,
+                        "expense" = %s
+                    WHERE "emailId" = %s
+                    RETURNING "emailId", "isRead", "category", "expense";
+                    """
+                    
+                    cursor.execute(update_query, (category, expense, email_id))
+                    result = cursor.fetchone()
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+
+                    # Log database update result
+                    logging.info(f"Database update result: {result}")
+                    
+                    if result:
+                        total = await self.get_total_expense()
+                        formatted_total = "{:,.0f}".format(abs(total))
+                        
+                        # First message - Confirmation of saving
+                        await update.message.reply_text(
+                            f"✅ Đã lưu thông tin chi tiêu!\nDanh mục: {category}\nChi tiết: {expense}",
+                            quote=False
+                        )
+                        
+                        # Second message - Total expense
+                        await update.message.reply_text(
+                            f"💰 Đã chi tiêu trong tháng này!\nTổng: {formatted_total} VNĐ",
+                            quote=False
+                        )
+                    else:
+                        await update.message.reply_text(
+                            "❌ Không thể lưu thông tin! Vui lòng thử lại sau.",
+                            quote=False
+                        )
+                    
+                except Exception as e:
+                    logging.error(f"Error saving reply: {str(e)}")
                     await update.message.reply_text(
-                        "⚠️ Không có email nào đang chờ phản hồi!\nVui lòng sử dụng lệnh /check_bot để xem các giao dịch chưa ghi chú.",
+                        f"❌ Lỗi khi lưu phản hồi: {str(e)}\nVui lòng thử lại.",
                         quote=False
                     )
             else:
