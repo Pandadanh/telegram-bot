@@ -358,20 +358,6 @@ class EmailBot:
                     # Log the received message for debugging
                     logging.info(f"Received reply message: {message}")
                     
-                    # Extract email ID from the replied message
-                    replied_text = reply_to_message.text
-                    email_id_match = re.search(r'ID: (\d+)', replied_text)
-                    
-                    if not email_id_match:
-                        await update.message.reply_text(
-                            "❌ Không tìm thấy ID email trong tin nhắn được trả lời!\n"
-                            "Vui lòng trả lời tin nhắn chứa thông tin giao dịch.",
-                            quote=False
-                        )
-                        return
-                        
-                    email_id = email_id_match.group(1)
-                    
                     # Validate reply syntax
                     if ' - ' not in message:
                         await update.message.reply_text(
@@ -406,68 +392,92 @@ class EmailBot:
                     conn = psycopg2.connect(**DB_CONFIG)
                     cursor = conn.cursor()
                     
-                    # First check if email exists and is unread
-                    check_query = """
-                    SELECT "emailId" FROM "Email"
-                    WHERE "emailId" = %s AND "isRead" = false;
-                    """
-                    cursor.execute(check_query, (email_id,))
-                    email_exists = cursor.fetchone()
-                    
-                    if not email_exists:
+                    try:
+                        # Extract price and note from the replied message
+                        replied_text = reply_to_message.text
+                        price_match = re.search(r'(\d+(?:,\d+)*) VNĐ', replied_text)
+                        note_match = re.search(r'Nội dung: (.+?)(?:\n|$)', replied_text)
+                        
+                        if not price_match or not note_match:
+                            await update.message.reply_text(
+                                "❌ Không thể tìm thấy thông tin giao dịch trong tin nhắn được trả lời!",
+                                quote=False
+                            )
+                            return
+                            
+                        # Get the transaction from database
+                        query = """
+                        SELECT "emailId" FROM "Email"
+                        WHERE "price" = %s AND "note" = %s AND "isRead" = false
+                        ORDER BY "createdAt" DESC LIMIT 1;
+                        """
+                        
+                        # Convert price string to number
+                        price_str = price_match.group(1).replace(',', '')
+                        price = float(price_str)
+                        if 'giảm' in replied_text:
+                            price = -price
+                            
+                        cursor.execute(query, (price, note_match.group(1)))
+                        result = cursor.fetchone()
+                        
+                        if not result:
+                            await update.message.reply_text(
+                                "❌ Không tìm thấy giao dịch tương ứng trong cơ sở dữ liệu!",
+                                quote=False
+                            )
+                            return
+                            
+                        # Update the transaction
+                        update_query = """
+                        UPDATE "Email" 
+                        SET "isRead" = true,
+                            "category" = %s,
+                            "expense" = %s
+                        WHERE "emailId" = %s
+                        RETURNING "emailId";
+                        """
+                        
+                        cursor.execute(update_query, (category, expense, result[0]))
+                        update_result = cursor.fetchone()
+                        conn.commit()
+                        
+                        if update_result:
+                            # Get total expense after update
+                            total = await self.get_total_expense()
+                            formatted_total = "{:,.0f}".format(abs(total))
+                            
+                            # Send success messages
+                            await update.message.reply_text(
+                                f"✅ Đã lưu thông tin chi tiêu!\nDanh mục: {category}\nChi tiết: {expense}",
+                                quote=False
+                            )
+                            
+                            await update.message.reply_text(
+                                f"💰 Tổng chi tiêu trong tháng này: {formatted_total} VNĐ",
+                                quote=False
+                            )
+                        else:
+                            await update.message.reply_text(
+                                "❌ Không thể cập nhật thông tin! Vui lòng thử lại.",
+                                quote=False
+                            )
+                            
+                    except Exception as e:
+                        logging.error(f"Database error: {str(e)}")
                         await update.message.reply_text(
-                            "❌ Không tìm thấy giao dịch chưa đọc với ID này!\n"
-                            "Vui lòng kiểm tra lại hoặc sử dụng /check_bot để xem danh sách giao dịch chưa ghi chú.",
+                            "❌ Lỗi khi cập nhật cơ sở dữ liệu! Vui lòng thử lại.",
                             quote=False
                         )
+                        conn.rollback()
+                    finally:
                         cursor.close()
                         conn.close()
-                        return
-                    
-                    # Update the email
-                    update_query = """
-                    UPDATE "Email" 
-                    SET "isRead" = true,
-                        "category" = %s,
-                        "expense" = %s
-                    WHERE "emailId" = %s
-                    RETURNING "emailId", "isRead", "category", "expense";
-                    """
-                    
-                    cursor.execute(update_query, (category, expense, email_id))
-                    result = cursor.fetchone()
-                    conn.commit()
-                    cursor.close()
-                    conn.close()
-
-                    # Log database update result
-                    logging.info(f"Database update result: {result}")
-                    
-                    if result:
-                        total = await self.get_total_expense()
-                        formatted_total = "{:,.0f}".format(abs(total))
-                        
-                        # First message - Confirmation of saving
-                        await update.message.reply_text(
-                            f"✅ Đã lưu thông tin chi tiêu!\nDanh mục: {category}\nChi tiết: {expense}",
-                            quote=False
-                        )
-                        
-                        # Second message - Total expense
-                        await update.message.reply_text(
-                            f"💰 Đã chi tiêu trong tháng này!\nTổng: {formatted_total} VNĐ",
-                            quote=False
-                        )
-                    else:
-                        await update.message.reply_text(
-                            "❌ Không thể lưu thông tin! Vui lòng thử lại sau.",
-                            quote=False
-                        )
                     
                 except Exception as e:
-                    logging.error(f"Error saving reply: {str(e)}")
+                    logging.error(f"Error processing reply: {str(e)}")
                     await update.message.reply_text(
-                        f"❌ Lỗi khi lưu phản hồi: {str(e)}\nVui lòng thử lại.",
+                        "❌ Có lỗi xảy ra khi xử lý phản hồi! Vui lòng thử lại.",
                         quote=False
                     )
             else:
